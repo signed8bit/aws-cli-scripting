@@ -4,17 +4,20 @@ set -e
 
 run()
 {    
-    attributes=`aws --profile "${profile}" ec2 describe-instances | jq --arg name ${name} '.Reservations[].Instances[] |  if .Tags != null and .Tags[].Key == "Name" and .Tags[].Value == $name then {InstanceId,PublicDnsName,PrivateIpAddress,KeyName} else empty end'`
+    attributes=`aws --profile "${profile}" ec2 describe-instances | jq --arg name ${name} '.Reservations[].Instances[] |  if .Tags != null and .Tags[].Key == "Name" and .Tags[].Value == $name then {InstanceId,State,PublicDnsName,PrivateIpAddress,KeyName} else empty end'`
+     
+    echo ${attributes}
                           
     if [[ -n "${attributes}" ]]; then
         # See if we have more than one instance matching the given name
         read -a instanceIds <<< `echo ${attributes} | jq --raw-output .InstanceId`
         
         if [[ ${#instanceIds[@]} > 1 ]]; then
-            echo "Please select the matching named instance:"
+            echo "Select the matching instance:"
             for index in "${!instanceIds[@]}"
                 do
-                echo "$((index + 1)). ${name} (${instanceIds[index]})"
+                state=`echo ${attributes} | jq --arg instanceId ${instanceIds[index]} --raw-output 'if .InstanceId == $instanceId then .State.Name else empty end'`
+                echo "$((index + 1)). ${name} (${instanceIds[index]} - ${state})"
             done
             
             read selectedIndex
@@ -25,7 +28,7 @@ run()
                 echo "Error: ${selectedIndex} is not a valid selection"
                 exit 1
             fi
-        else 
+        else
             instanceId="${instanceIds[0]}"
         fi
         
@@ -33,19 +36,30 @@ run()
         keyName=`echo ${attributes} | jq --arg instanceId ${instanceId} --raw-output 'if .InstanceId == $instanceId then .KeyName else empty end'`
         publicDnsName=`echo ${attributes} | jq --arg instanceId ${instanceId} --raw-output 'if .InstanceId == $instanceId then .PublicDnsName else empty end'`
         privateIpAddress=`echo ${attributes} | jq --arg instanceId ${instanceId} --raw-output 'if .InstanceId == $instanceId then .PrivateIpAddress else empty end'`
-    
-        # Favor public DNS name over private IP
-        if [[ -n "${publicDnsName}" && "${publicDnsName}" != "null" ]]; then
-            hostName="${publicDnsName}"  
-        else
-            hostName="${privateIpAddress}"
-        fi 
+        state=`echo ${attributes} | jq --arg instanceId ${instanceId} --raw-output 'if .InstanceId == $instanceId then .State.Name else empty end'`
+        
+        if [[ -n "${state}" && "${state}" == "running" ]]; then
+            # Favor public DNS name over private IP
+            if [[ -n "${publicDnsName}" && "${publicDnsName}" != "null" ]]; then
+                hostName="${publicDnsName}"  
+            else
+                hostName="${privateIpAddress}"
+            fi 
                     
-        if [[ -n "${hostName}" && "${hostName}" != "null" && -n "${keyName}" && "${keyName}" != "null" ]]; then
-            echo "Connecting to ${instanceId} via ${hostName}..."
-            ssh -i ~/.aws/${keyName}.pem -o StrictHostKeyChecking=no -o ServerAliveInterval=30 ${user}@${hostName}
+            if [[ -n "${hostName}" && "${hostName}" != "null" ]]; then
+                if [[ -n "${keyName}" && "${keyName}" != "null" ]]; then
+                    echo "Connecting to ${instanceId} via ${hostName}..."
+                    ssh -i ~/.aws/${keyName}.pem -o StrictHostKeyChecking=no -o ServerAliveInterval=30 ${user}@${hostName}
+                else
+                    echo "Error: The key name of the instance could not be found"
+                exit 1    
+                fi
+            else
+                echo "Error: The host name or IP address of the instance could not be found"
+                exit 1
+            fi
         else
-            echo "Error: The host name or key name could not be found"
+            echo "Error: The selected instance is ${state}"
             exit 1
         fi
     else
@@ -59,6 +73,8 @@ run()
 # ------------------------
 usage() {
     echo "Usage: ec2-ssh [-p profile] [-u user] instance_name"
+    echo "    -p The named profile as found in ~/.aws/config"
+    echo "    -u The user to connect as"
 }
 
 # -------------
