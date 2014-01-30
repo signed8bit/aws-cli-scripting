@@ -1,0 +1,127 @@
+#!/bin/bash
+
+set -e
+
+run()
+{    
+    attributes=`aws --profile "${profile}" ec2 describe-instances | jq --arg name ${name} '.Reservations[].Instances[] |  if .Tags != null and .Tags[].Key == "Name" and .Tags[].Value == $name then {InstanceId,PublicDnsName,PrivateIpAddress,KeyName} else empty end'`
+                          
+    if [[ -n "${attributes}" ]]; then
+        # See if we have more than one instance matching the given name
+        read -a instanceIds <<< `echo ${attributes} | jq --raw-output .InstanceId`
+        
+        if [[ ${#instanceIds[@]} > 1 ]]; then
+            echo "\nPlease select the matching named instance:"
+            for index in "${!instanceIds[@]}"
+                do
+                echo "$((index + 1)). ${name} (${instanceIds[index]})"
+            done
+            
+            read selectedIndex
+
+            if (( ${selectedIndex} > 0 && ${selectedIndex} <= ${#instanceIds[@]} )); then
+                instanceId="${instanceIds[$((selectedIndex - 1))]}"
+            else
+                echo "Error: ${selectedIndex} is not a valid selection"
+                exit 1
+            fi
+        else 
+            instanceId="${instanceIds[0]}"
+        fi
+        
+        # Get the needed attributes of the selected instance            
+        keyName=`echo ${attributes} | jq --arg instanceId ${instanceId} --raw-output 'if .InstanceId == $instanceId then .KeyName else empty end'`
+        publicDnsName=`echo ${attributes} | jq --arg instanceId ${instanceId} --raw-output 'if .InstanceId == $instanceId then .PublicDnsName else empty end'`
+        privateIpAddress=`echo ${attributes} | jq --arg instanceId ${instanceId} --raw-output 'if .InstanceId == $instanceId then .PrivateIpAddress else empty end'`
+    
+        # Favor public DNS name over private IP
+        if [[ -n "${publicDnsName}" && "${publicDnsName}" != "null" ]]; then
+            hostName="${publicDnsName}"  
+        else
+            hostName="${privateIpAddress}"
+        fi 
+                    
+        if [[ -n "${hostName}" && "${hostName}" != "null" && -n "${keyName}" && "${keyName}" != "null" ]]; then
+            echo "Connecting to ${instanceId} via ${hostName}..."
+            ssh -i ~/.aws/${keyName}.pem -o StrictHostKeyChecking=no -o ServerAliveInterval=30 ${user}@${hostName}
+        else
+            echo "Error: The host name or key name could not be found"
+            exit 1
+        fi
+    else
+        echo "Error: The named instance could not be found"
+        exit 1
+    fi
+}
+
+# ------------------------
+# Prints usage information
+# ------------------------
+usage() {
+    echo "Usage: ec2-ssh [-p profile] [-u user] instance_name"
+}
+
+# -------------
+# Parse options
+# -------------
+while getopts ":p:u:" opt; do
+    case $opt in
+        p)
+            profile=${OPTARG} >&2
+            ;;
+        u)
+            user=${OPTARG} >&2
+            ;;
+        \?)
+            echo "Error: -$OPTARG is an invalid option" >&2
+            usage
+            exit 1
+            ;;
+        :)
+            echo "Error: -$OPTARG requires an argument" >&2
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# -----------------------------
+# Set default options if needed
+# -----------------------------
+if [[ -z ${profile} ]]; then
+    if [[ -n ${EC2_SSH_PROFILE} ]]; then
+        profile=${EC2_SSH_PROFILE}
+    else
+        profile="default"
+    fi
+fi
+
+if [[ -z ${user} ]]; then
+    if [[ -n ${EC2_SSH_USER} ]]; then
+        user=${EC2_SSH_USER}
+    else
+        user=${USER}         
+    fi        
+fi
+
+# --------------------------
+# Parse the required operand
+# --------------------------
+shift $((OPTIND-1))
+
+if [[ $# -lt 1 ]]; then
+    usage
+    exit 1
+fi
+
+name=$1
+
+# Debug
+# echo "Profile: |${profile}|"
+# echo "User: |${user}|"
+# echo "Name: |${name}|"
+
+# -------------------------------
+# Run the main body of the script
+# -------------------------------
+run
