@@ -116,11 +116,6 @@ fi
 
 name=$1
 
-# Debug
-# echo "Profile: |${profile}|"
-# echo "User: |${user}|"
-# echo "Name: |${name}|"
-
 # -------------------------------
 # Run the main body of the script
 # -------------------------------
