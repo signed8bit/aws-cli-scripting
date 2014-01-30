@@ -11,7 +11,7 @@ run()
         read -a instanceIds <<< `echo ${attributes} | jq --raw-output .InstanceId`
         
         if [[ ${#instanceIds[@]} > 1 ]]; then
-            echo "\nPlease select the matching named instance:"
+            echo "Please select the matching named instance:"
             for index in "${!instanceIds[@]}"
                 do
                 echo "$((index + 1)). ${name} (${instanceIds[index]})"

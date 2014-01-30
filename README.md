@@ -14,7 +14,7 @@ Scripts
 ec2-ssh
 -------
 
-A convenient way to SSH into an EC2 instance by referencing the value of the "Name" tag. 
+A convenient way to SSH into an EC2 instance by referencing the value of an instance's "Name" tag. 
 
     Usage: ec2-ssh [-p profile] [-u user] instance_name
     
