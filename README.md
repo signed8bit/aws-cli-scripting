@@ -24,7 +24,7 @@ _User_ is the user who will be referenced when connecting to the instance. Inste
 
 _Instance Name_ is the name of the instance to connect to as specified in the "Name" tag. If more than one instance is matched, the available instances will be displayed and one can be selected.
 
-The script prefers to connect to an instance using the specified public DNS name. If no public DNS name is available, the instance's private IP address is used. Any needed keys are expected to be located in your _~/.aws/config_ directory.
+The script prefers to connect to an instance using the specified public DNS name. If no public DNS name is available, the instance's private IP address is used. Any needed keys are expected to be located in your _~/.aws_ directory.
 
     % ls ~/.aws
     config				my-key.pem
